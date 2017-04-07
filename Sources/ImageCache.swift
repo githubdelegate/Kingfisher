@@ -40,7 +40,10 @@ public extension Notification.Name {
      
      The main purpose of this notification is supplying a chance to maintain some necessary information on the cached files. See [this wiki](https://github.com/onevcat/Kingfisher/wiki/How-to-implement-ETag-based-304-(Not-Modified)-handling-in-Kingfisher) for a use case on it.
      */
-    public static var KingfisherDidCleanDiskCache = Notification.Name.init("com.onevcat.Kingfisher.KingfisherDidCleanDiskCache")
+    
+    // 扩展 添加一个静态的kf清理缓存的通知名
+    public static var KingfisherDidCleanDiskCache =  Notification.Name.init("com.onevcat.Kingfisher.KingfisherDidCleanDiskCache")
+    
 }
 
 /**
@@ -69,19 +72,31 @@ public enum CacheType {
 open class ImageCache {
 
     //Memory
+    
+    /*
+     设置缓存中指定键的值，并将键值对与指定成本关联。
+     成本值用于计算包含在缓存中的所有对象的成本的总和。当内存是有限的，或当缓存的总成本的最大允许的总成本，缓存可以开始驱逐进程，以消除其一些元素。然而，这个驱逐过程不是在保证秩序。因此，如果你试图操纵成本值来实现某些特定的行为，后果可能会对你的程序有害。通常，明显的成本是字节值的大小。如果这些信息不是现成的，你不应该经历计算它的麻烦，因为这样做会提高使用缓存的成本。通过0成本价值如果你没有使用过，或简单地使用setobject：重点：方法，不需要成本的价值将通过。
+     
+     
+     缓存是否会自动将丢弃的内容对象的内容已被丢弃。
+     如果是真的，缓存将驱逐一个无用的内容对象的内容被丢弃后。如果虚假，它不会。默认值为真。
+
+     */
+    // 定义缓存属性
     fileprivate let memoryCache = NSCache<NSString, AnyObject>()
     
     /// The largest cache cost of memory cache. The total cost is pixel count of 
     /// all cached images in memory.
     /// Default is unlimited. Memory cache will be purged automatically when a 
     /// memory warning notification is received.
+    // 缓存的最大容量，
     open var maxMemoryCost: UInt = 0 {
-        didSet {
+        didSet {// 每次设置的话都去更新缓存的属性值
             self.memoryCache.totalCostLimit = Int(maxMemoryCost)
         }
     }
     
-    //Disk
+    //Disk io任务队列，
     fileprivate let ioQueue: DispatchQueue
     fileprivate var fileManager: FileManager!
     
@@ -100,7 +115,7 @@ open class ImageCache {
     /// allocated size of cached files in bytes.
     /// Default is no limit.
     open var maxDiskCacheSize: UInt = 0
-    
+    // 处理队列，用来对取出来的图片进行一些处理
     fileprivate let processQueue: DispatchQueue
     
     /// The default cache.
@@ -109,9 +124,10 @@ open class ImageCache {
     /// Closure that defines the disk cache path from a given path and cacheName.
     public typealias DiskCachePathClosure = (String?, String) -> String
     
-    /// The default DiskCachePathClosure
+    /// The default DiskCachePathClosure 定义一个方法，这儿方法的作用是，根据路径和缓存名去拼接一个缓存路径
     public final class func defaultDiskCachePathClosure(path: String?, cacheName: String) -> String {
         let dstPath = path ?? NSSearchPathForDirectoriesInDomains(.cachesDirectory, .userDomainMask, true).first!
+        // 如果path为空，就用默认的缓存路径
         return (dstPath as NSString).appendingPathComponent(cacheName)
     }
     
@@ -136,20 +152,26 @@ open class ImageCache {
             fatalError("[Kingfisher] You should specify a name for the cache. A cache with empty name is not permitted.")
         }
         
+        // 拼接缓存名字，使用反向域名 命名 唯一
         let cacheName = "com.onevcat.Kingfisher.ImageCache.\(name)"
         memoryCache.name = cacheName
         
+        // 获取缓存路径地址
         diskCachePath = diskCachePathClosure(path, cacheName)
         
+        // 反向域名创建io队列
         let ioQueueName = "com.onevcat.Kingfisher.ImageCache.ioQueue.\(name)"
         ioQueue = DispatchQueue(label: ioQueueName)
         
+        // 反向域名创建处理队列
         let processQueueName = "com.onevcat.Kingfisher.ImageCache.processQueue.\(name)"
         processQueue = DispatchQueue(label: processQueueName, attributes: .concurrent)
         
+        // 同步的去创建文件管理器
         ioQueue.sync { fileManager = FileManager() }
         
 #if !os(macOS) && !os(watchOS)
+    // 接受 清理内存，将要终结，进入后台通知，去清理不同类型的缓存
         NotificationCenter.default.addObserver(
             self, selector: #selector(clearMemoryCache), name: .UIApplicationDidReceiveMemoryWarning, object: nil)
         NotificationCenter.default.addObserver(
@@ -159,6 +181,7 @@ open class ImageCache {
 #endif
     }
     
+    // 析构
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
@@ -189,10 +212,12 @@ open class ImageCache {
                       toDisk: Bool = true,
                       completionHandler: (() -> Void)? = nil)
     {
-        
+        // 添加一个图片到缓存中，图片，原始数据，key，处理标示，缓存序列化器，是否保存到磁盘，结束后的操作
+        // 计算key
         let computedKey = key.computedKey(with: identifier)
+        // 保持到缓存中
         memoryCache.setObject(image, forKey: computedKey as NSString, cost: image.kf.imageCost)
-
+        // 定义函数 如果结束后有操作就在主线程中执行操作
         func callHandlerInMainQueue() {
             if let handler = completionHandler {
                 DispatchQueue.main.async {
@@ -200,18 +225,17 @@ open class ImageCache {
                 }
             }
         }
-        
+        //
         if toDisk {
-            ioQueue.async {
-                
-                if let data = serializer.data(with: image, original: original) {
-                    if !self.fileManager.fileExists(atPath: self.diskCachePath) {
+            ioQueue.async { // 异步的操作
+                if let data = serializer.data(with: image, original: original) { // 生成图片数据
+                    if !self.fileManager.fileExists(atPath: self.diskCachePath) { // 如果文件不存在
                         do {
-                            try self.fileManager.createDirectory(atPath: self.diskCachePath, withIntermediateDirectories: true, attributes: nil)
-                        } catch _ {}
+                            try self.fileManager.createDirectory(atPath: self.diskCachePath, withIntermediateDirectories: true, attributes: nil) // 创建目录
+                        } catch _ {} //
                     }
                     
-                    self.fileManager.createFile(atPath: self.cachePath(forComputedKey: computedKey), contents: data, attributes: nil)
+                    self.fileManager.createFile(atPath: self.cachePath(forComputedKey: computedKey), contents: data, attributes: nil) // 创建文件
                 }
                 callHandlerInMainQueue()
             }
@@ -230,14 +254,17 @@ open class ImageCache {
     - parameter fromDisk:          Whether this image should be removed from disk or not. If false, the image will be only removed from memory.
     - parameter completionHandler: Called when removal operation completes.
     */
+    // 删掉图片 key 处理标示 是否删除磁盘缓存 完成后操作
     open func removeImage(forKey key: String,
                           processorIdentifier identifier: String = "",
                           fromDisk: Bool = true,
                           completionHandler: (() -> Void)? = nil)
     {
+        // 计算key
         let computedKey = key.computedKey(with: identifier)
+        // 从缓存中删除
         memoryCache.removeObject(forKey: computedKey as NSString)
-        
+        // 有结束操作在主线程中执行
         func callHandlerInMainQueue() {
             if let handler = completionHandler {
                 DispatchQueue.main.async {
@@ -247,7 +274,7 @@ open class ImageCache {
         }
         
         if fromDisk {
-            ioQueue.async{
+            ioQueue.async{ // 异步的从文件中删掉缓存
                 do {
                     try self.fileManager.removeItem(atPath: self.cachePath(forComputedKey: computedKey))
                 } catch _ {}
@@ -284,16 +311,20 @@ open class ImageCache {
         var block: RetrieveImageDiskTask?
         let options = options ?? KingfisherEmptyOptionsInfo
         
+        // 先从内存取图片，有直接取出执行结束
+        
+        // 内存中有图片
         if let image = self.retrieveImageInMemoryCache(forKey: key, options: options) {
+            // 有没有回调的队列
             options.callbackDispatchQueue.safeAsync {
                 completionHandler(image, .memory)
             }
-        } else {
+        } else { // 内存没有图片
             var sSelf: ImageCache! = self
             block = DispatchWorkItem(block: {
                 // Begin to load image from disk
                 if let image = sSelf.retrieveImageInDiskCache(forKey: key, options: options) {
-                    if options.backgroundDecode {
+                    if options.backgroundDecode { // 需要后台处理
                         sSelf.processQueue.async {
                             let result = image.kf.decoded(scale: options.scaleFactor)
                             
@@ -303,13 +334,13 @@ open class ImageCache {
                                         cacheSerializer: options.cacheSerializer,
                                         toDisk: false,
                                         completionHandler: nil)
-                            
+                            //
                             options.callbackDispatchQueue.safeAsync {
                                 completionHandler(result, .memory)
                                 sSelf = nil
                             }
                         }
-                    } else {
+                    } else { //  不需要后台处理
                         sSelf.store(image,
                                     forKey: key,
                                     processorIdentifier: options.processor.identifier,
@@ -323,6 +354,7 @@ open class ImageCache {
                         }
                     }
                 } else {
+                    // 没有图片
                     // No image found from either memory or disk
                     options.callbackDispatchQueue.safeAsync {
                         completionHandler(nil, .none)
@@ -346,14 +378,14 @@ open class ImageCache {
     - returns: The image object if it is cached, or `nil` if there is no such key in the cache.
     */
     open func retrieveImageInMemoryCache(forKey key: String, options: KingfisherOptionsInfo? = nil) -> Image? {
-        
+        // 从缓存中取图片
         let options = options ?? KingfisherEmptyOptionsInfo
         let computedKey = key.computedKey(with: options.processor.identifier)
         
         return memoryCache.object(forKey: computedKey as NSString) as? Image
     }
     
-    /**
+    /** 从磁盘上获取图片
     Get an image for a key from disk.
     
     - parameter key:     Key for the image.
@@ -363,10 +395,12 @@ open class ImageCache {
     - returns: The image object if it is cached, or `nil` if there is no such key in the cache.
     */
     open func retrieveImageInDiskCache(forKey key: String, options: KingfisherOptionsInfo? = nil) -> Image? {
-        
+      
+        // 获取属性选项，不存在就用默认的
         let options = options ?? KingfisherEmptyOptionsInfo
+        // 获取计算的key
         let computedKey = key.computedKey(with: options.processor.identifier)
-        
+        //
         return diskImage(forComputedKey: computedKey, serializer: options.cacheSerializer, options: options)
     }
 
@@ -626,15 +660,18 @@ open class ImageCache {
         return cachePath(forComputedKey: computedKey)
     }
 
+    // 根据键key获取缓存的路径地址
     open func cachePath(forComputedKey key: String) -> String {
+        // 拼接获取缓存文件的名字
         let fileName = cacheFileName(forComputedKey: key)
+        // 把缓存路径拼接文件名返回
         return (diskCachePath as NSString).appendingPathComponent(fileName)
     }
 }
 
 // MARK: - Internal Helper
 extension ImageCache {
-  
+  // 根据键 序列化对象 选项 去获取图片
     func diskImage(forComputedKey key: String, serializer: CacheSerializer, options: KingfisherOptionsInfo) -> Image? {
         if let data = diskImageData(forComputedKey: key) {
             return serializer.image(with: data, options: options)
@@ -643,28 +680,35 @@ extension ImageCache {
         }
     }
     
+    // 根据键去获取img的数据
     func diskImageData(forComputedKey key: String) -> Data? {
+        // 获取缓存的文件路径地址
         let filePath = cachePath(forComputedKey: key)
+        // 获取数据data
         return (try? Data(contentsOf: URL(fileURLWithPath: filePath)))
     }
     
+    // 根据key 获取缓存的文件名字
     func cacheFileName(forComputedKey key: String) -> String {
+        // 如果有扩展名 就在后面拼接扩展名
         if let ext = self.pathExtension {
           return (key.kf.md5 as NSString).appendingPathExtension(ext)!
         }
+        // 返回键key的md5，md5 能保证唯一
         return key.kf.md5
     }
 }
 
+
 extension Kingfisher where Base: Image {
     var imageCost: Int {
-        return images == nil ?
+        return images == nil ? // images 表示images 属性，包含多张图片
             Int(size.height * size.width * scale * scale) :
             Int(size.height * size.width * scale * scale) * images!.count
     }
 }
 
-extension Dictionary {
+extension Dictionary {// 扩展字典实现，key能够按照value的值进行排序，返回的是经过排序后的key的数组。
     func keysSortedByValue(_ isOrderedBefore: (Value, Value) -> Bool) -> [Key] {
         return Array(self).sorted{ isOrderedBefore($0.1, $1.1) }.map{ $0.0 }
     }
@@ -683,6 +727,7 @@ extension Kingfisher where Base: UIApplication {
 #endif
 
 extension String {
+    // 扩展string 计算一个key 拼接
     func computedKey(with identifier: String) -> String {
         if identifier.isEmpty {
             return self

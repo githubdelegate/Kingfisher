@@ -173,7 +173,7 @@ extension Kingfisher where Base: Image {
 // MARK: - Image Representation
 extension Kingfisher where Base: Image {
     // MARK: - PNG
-    public func pngRepresentation() -> Data? {
+    public func pngRepresentation() -> Data? { // 产生png数据
         #if os(macOS)
             guard let cgimage = cgImage else {
                 return nil
@@ -185,7 +185,7 @@ extension Kingfisher where Base: Image {
         #endif
     }
     
-    // MARK: - JPEG
+    // MARK: - JPEG 生成jpg 数据
     public func jpegRepresentation(compressionQuality: CGFloat) -> Data? {
         #if os(macOS)
             guard let cgImage = cgImage else {
@@ -206,18 +206,22 @@ extension Kingfisher where Base: Image {
 
 // MARK: - Create images from data
 extension Kingfisher where Base: Image {
+    // 获取动画的图片gif
     static func animated(with data: Data, scale: CGFloat = 1.0, duration: TimeInterval = 0.0, preloadAll: Bool, onlyFirstFrame: Bool = false) -> Image? {
         
+        // 解码 图片 返回一个图片数组和时间间隔的元组
         func decode(from imageSource: CGImageSource, for options: NSDictionary) -> ([Image], TimeInterval)? {
             
+            // 计算每帧的时间
             //Calculates frame duration for a gif frame out of the kCGImagePropertyGIFDictionary dictionary
             func frameDuration(from gifInfo: NSDictionary?) -> Double {
-                let gifDefaultFrameDuration = 0.100
+                let gifDefaultFrameDuration = 0.100 // 定义一个默认值
                 
                 guard let gifInfo = gifInfo else {
                     return gifDefaultFrameDuration
                 }
                 
+                // 获取 时间
                 let unclampedDelayTime = gifInfo[kCGImagePropertyGIFUnclampedDelayTime as String] as? NSNumber
                 let delayTime = gifInfo[kCGImagePropertyGIFDelayTime as String] as? NSNumber
                 let duration = unclampedDelayTime ?? delayTime
@@ -227,11 +231,14 @@ extension Kingfisher where Base: Image {
                 return frameDuration.doubleValue > 0.011 ? frameDuration.doubleValue : gifDefaultFrameDuration
             }
             
+            // 获取帧数
             let frameCount = CGImageSourceGetCount(imageSource)
             var images = [Image]()
             var gifDuration = 0.0
+            // 遍历每一帧图片
             for i in 0 ..< frameCount {
                 
+                // 取出图片
                 guard let imageRef = CGImageSourceCreateImageAtIndex(imageSource, i, options) else {
                     return nil
                 }
@@ -241,11 +248,11 @@ extension Kingfisher where Base: Image {
                     gifDuration = Double.infinity
                 } else {
                     
-                    // Animated GIF
+                    // Animated GIF 取出每一帧图片的属性字典
                     guard let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, i, nil) else {
                         return nil
                     }
-
+                    // 取出gif 字典
                     let gifInfo = (properties as NSDictionary)[kCGImagePropertyGIFDictionary as String] as? NSDictionary
                     gifDuration += frameDuration(from: gifInfo)
                 }
@@ -254,12 +261,13 @@ extension Kingfisher where Base: Image {
                 
                 if onlyFirstFrame { break }
             }
-            
+            // 返回 图片和 总时间
             return (images, gifDuration)
         }
         
-        // Start of kf.animatedImageWithGIFData
+        // Start of kf.animatedImageWithGIFData  初始化一个选项字典 ，是否缓存解码的图片：是；图片大概类型：gif
         let options: NSDictionary = [kCGImageSourceShouldCache as String: true, kCGImageSourceTypeIdentifierHint as String: kUTTypeGIF]
+        // 获取图片资源
         guard let imageSource = CGImageSourceCreateWithData(data as CFData, options) else {
             return nil
         }
@@ -279,12 +287,11 @@ extension Kingfisher where Base: Image {
             image?.kf.animatedImageData = data
             return image
         #else
-            
             let image: Image?
-            if preloadAll || onlyFirstFrame {
+            if preloadAll || onlyFirstFrame { // 如果加载就是解析图片
                 guard let (images, gifDuration) = decode(from: imageSource, for: options) else { return nil }
                 image = onlyFirstFrame ? images.first : Kingfisher<Image>.animated(with: images, forDuration: duration <= 0.0 ? gifDuration : duration)
-            } else {
+            } else { // 都不的话，直接用系统方法生成图片，并保持原始资源
                 image = Image(data: data)
                 image?.kf.imageSource = ImageSource(ref: imageSource)
             }
@@ -293,6 +300,7 @@ extension Kingfisher where Base: Image {
         #endif
     }
     
+    // 数据转图片，数据，比例，是否加载全部gif数据，是否只取第一帧
     static func image(data: Data, scale: CGFloat, preloadAllGIFData: Bool, onlyFirstFrame: Bool) -> Image? {
         var image: Image?
         
@@ -313,20 +321,21 @@ extension Kingfisher where Base: Image {
                 image = Image(data: data)
             }
         #else
+            // 根据数据获取数据图片格式
             switch data.kf.imageFormat {
             case .JPEG:
                 image = Image(data: data, scale: scale)
             case .PNG:
                 image = Image(data: data, scale: scale)
             case .GIF:
-                image = Kingfisher<Image>.animated(
+                image = Kingfisher<Image>.animated( // 去获取动态的图片
                     with: data,
                     scale: scale,
                     duration: 0.0,
                     preloadAll: preloadAllGIFData,
                     onlyFirstFrame: onlyFirstFrame)
             case .unknown:
-                image = Image(data: data, scale: scale)
+                image = Image(data: data, scale: scale) // 不知道类型的直接用系统的方法
             }
         #endif
         
@@ -606,6 +615,7 @@ extension Kingfisher where Base: Image {
 }
 
 /// Reference the source image reference
+
 class ImageSource {
     var imageRef: CGImageSource?
     init(ref: CGImageSource) {
@@ -642,6 +652,7 @@ extension Data: KingfisherCompatible {
 }
 
 extension DataProxy {
+    // getter 通过比较image 头8ge字节来判断image 类型
     var imageFormat: ImageFormat {
         var buffer = [UInt8](repeating: 0, count: 8)
         (base as NSData).getBytes(&buffer, length: 8)

@@ -450,7 +450,7 @@ class ImageDownloaderSessionHandler: NSObject, URLSessionDataDelegate, Authentic
         }
     }
     
-    private func callCompletionHandlerFailure(error: Error, url: URL) {
+    private func callCompletionHandlerFailure(error: Error, url: URL){
         guard let downloader = downloadHolder, let fetchLoad = downloader.fetchLoad(for: url) else {
             return
         }

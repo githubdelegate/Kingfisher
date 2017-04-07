@@ -34,7 +34,7 @@ import UIKit
 // MARK: - Extension methods.
 /**
  *	Set image to use from web.
- */
+ */// where 子句，这里base代表imageView
 extension Kingfisher where Base: ImageView {
     /**
      Set an image with a resource, a placeholder image, options, progress handler and completion handler.
@@ -57,6 +57,7 @@ extension Kingfisher where Base: ImageView {
                          progressBlock: DownloadProgressBlock? = nil,
                          completionHandler: CompletionHandler? = nil) -> RetrieveImageTask
     {
+        // 如果resource 为nil 直接reurn
         guard let resource = resource else {
             base.image = placeholder
             completionHandler?(nil, nil, .none, nil)
@@ -89,6 +90,7 @@ extension Kingfisher where Base: ImageView {
                     progressBlock(receivedSize, totalSize)
                 }
             },
+            // 自动引用计数-闭包引用-捕获列表
             completionHandler: {[weak base] image, error, cacheType, imageURL in
                 DispatchQueue.main.safeAsync {
                     guard let strongBase = base, imageURL == self.webURL else {
@@ -117,6 +119,7 @@ extension Kingfisher where Base: ImageView {
                                             UIView.transition(with: strongBase, duration: transition.duration,
                                                               options: [transition.animationOptions, .allowUserInteraction],
                                                               animations: {
+                                                                // 这里设置imageView 的image 为image
                                                                 // Set image property in the animation.
                                                                 transition.animations?(strongBase, image)
                                                               },
@@ -155,6 +158,7 @@ extension Kingfisher where Base: ImageView {
         return objc_getAssociatedObject(base, &lastURLKey) as? URL
     }
     
+    //
     fileprivate func setWebURL(_ url: URL) {
         objc_setAssociatedObject(base, &lastURLKey, url, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
     }

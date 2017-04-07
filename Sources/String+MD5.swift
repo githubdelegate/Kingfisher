@@ -27,7 +27,7 @@ public struct StringProxy {
         base = proxy
     }
 }
-
+// 扩展string成为kf 服务，能够直接在string里获取kf。
 extension String: KingfisherCompatible {
     public typealias CompatibleType = StringProxy
     public var kf: CompatibleType {
@@ -36,13 +36,14 @@ extension String: KingfisherCompatible {
 }
 
 extension StringProxy {
+    // 扩展string 实现md5，具体md5 怎么说实现的就不管了。
     var md5: String {
         if let data = base.data(using: .utf8, allowLossyConversion: true) {
-
+            // 获取指针地址
             let message = data.withUnsafeBytes { bytes -> [UInt8] in
                 return Array(UnsafeBufferPointer(start: bytes, count: data.count))
             }
-
+           
             let MD5Calculator = MD5(message)
             let MD5Data = MD5Calculator.calculate()
 

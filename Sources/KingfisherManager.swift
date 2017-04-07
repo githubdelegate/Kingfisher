@@ -30,9 +30,11 @@ import AppKit
 import UIKit
 #endif
 
+// 重命名类型 闭包
 public typealias DownloadProgressBlock = ((_ receivedSize: Int64, _ totalSize: Int64) -> ())
 public typealias CompletionHandler = ((_ image: Image?, _ error: NSError?, _ cacheType: CacheType, _ imageURL: URL?) -> ())
 
+// 获取图片任务 （内部包含 读取磁盘任务+下载图片任务）
 /// RetrieveImageTask represents a task of image retrieving process.
 /// It contains an async task of getting image from disk and from network.
 public class RetrieveImageTask {

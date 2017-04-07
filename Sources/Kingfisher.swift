@@ -42,7 +42,7 @@ import ImageIO
     typealias Button = UIButton
     #endif
 #endif
-
+// 泛型  final 不能被继承修改
 public final class Kingfisher<Base> {
     public let base: Base
     public init(_ base: Base) {
@@ -54,10 +54,12 @@ public final class Kingfisher<Base> {
  A type that has Kingfisher extensions.
  */
 public protocol KingfisherCompatible {
+    // 协议关联类型
     associatedtype CompatibleType
     var kf: CompatibleType { get }
 }
 
+// 扩展协议，实现方法，所有遵循协议的都可用
 public extension KingfisherCompatible {
     public var kf: Kingfisher<Self> {
         get { return Kingfisher(self) }
