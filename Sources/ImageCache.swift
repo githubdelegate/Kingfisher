@@ -514,7 +514,7 @@ open class ImageCache {
             }
         }
     }
-    // 遍历缓存文件 返回 元组（要删除的文件，硬盘缓存文件大小，）
+    // 遍历缓存文件 返回 元组（要删除的文件，硬盘缓存文件大小，） 当然这个方法也可以用来统计缓存文件的大小
     fileprivate func travelCachedFiles(onlyForCacheSize: Bool) -> (urlsToDelete: [URL], diskCacheSize: UInt, cachedFiles: [URL: URLResourceValues]) {
         // 磁盘缓存路径
         let diskCacheURL = URL(fileURLWithPath: diskCachePath)
@@ -575,7 +575,7 @@ open class ImageCache {
     Clean expired disk cache when app in background. This is an async operation.
     In most cases, you should not call this method explicitly. 
     It will be called automatically when `UIApplicationDidEnterBackgroundNotification` received.
-    */
+    */// 当程序进入后的时候 自动的清理缓存，这个方法不应该主动的调用，应该自定调用
     @objc public func backgroundCleanExpiredDiskCache() {
         // if 'sharedApplication()' is unavailable, then return
         guard let sharedApplication = Kingfisher<UIApplication>.shared else { return }
@@ -586,6 +586,14 @@ open class ImageCache {
         }
         
         var backgroundTask: UIBackgroundTaskIdentifier!
+        /* 标记一个新的长时间的后台任务的开始
+         这个方法让你的程序继续运行一段时间，当推到后台的时候。当离开任务未完成可能会损害您的应用程序的用户体验，您应该调用此方法的。例如，您的应用程序可以调用此方法以确保有足够的时间将重要文件传输到远程服务器或至少尝试传输和记录任何错误。你不应该为了让程序进入还能继续运行就简单的调用这个方法。
+         
+         每次调用此方法的调用必须匹配的endbackgroundtask平衡（_：）方法。运行后台任务的应用程序运行时间有限。（你能找出多少时间可使用backgroundtimeremaining属性。）如果你不调用endbackgroundtask（_：）在每个任务时间到期之前，系统将应用程序直接杀掉。如果在处理程序参数中提供了块对象，则系统在时间过期之前调用处理程序，以便给您结束任务的机会。
+         您可以在您的应用程序执行的任何一个点调用此方法。您也可以多次调用此方法来标记并行运行的几个后台任务的开始。然而，每个任务必须分开调用结束方法。使用该方法返回的值标识给定任务。
+         为了帮助调试，此方法为基于调用方法或函数的名称生成任务的名称。如果你想指定自定义名称，使用beginbackgroundtask（withname：expirationhandler方法代替：）。
+         此方法可以安全地调用非主线程。
+         */
         backgroundTask = sharedApplication.beginBackgroundTask {
             endBackgroundTask(&backgroundTask!)
         }
@@ -601,10 +609,10 @@ open class ImageCache {
     
     /**
     *  Cache result for checking whether an image is cached for a key.
-    */
+    */// 缓存结果
     public struct CacheCheckResult {
-        public let cached: Bool
-        public let cacheType: CacheType?
+        public let cached: Bool // 是否缓存
+        public let cacheType: CacheType? // 缓存类型
     }
     
     /**
@@ -613,19 +621,19 @@ open class ImageCache {
     - parameter key: Key for the image.
     
     - returns: The check result.
-    */
+    */// 判断图片是否缓存了 key,处理器
     open func isImageCached(forKey key: String, processorIdentifier identifier: String = "") -> CacheCheckResult {
         
         let computedKey = key.computedKey(with: identifier)
-        
+        // 判断内存是否缓存了
         if memoryCache.object(forKey: computedKey as NSString) != nil {
             return CacheCheckResult(cached: true, cacheType: .memory)
         }
-        
+        // 文件缓存路径
         let filePath = cachePath(forComputedKey: computedKey)
         
         var diskCached = false
-        ioQueue.sync {
+        ioQueue.sync { // 同步的判断磁盘是否存在缓存
             diskCached = fileManager.fileExists(atPath: filePath)
         }
 
@@ -643,7 +651,7 @@ open class ImageCache {
     - parameter identifier: The identifier of processor used. If you are using a processor for the image, pass the identifier of processor to it.
     
      - returns: Corresponding hash.
-    */
+    */// 根据key 返回hash  可以用来匹配文件
     open func hash(forKey key: String, processorIdentifier identifier: String = "") -> String {
         let computedKey = key.computedKey(with: identifier)
         return cacheFileName(forComputedKey: computedKey)
@@ -654,11 +662,11 @@ open class ImageCache {
     It is the total allocated size of the cached files in bytes.
     
     - parameter completionHandler: Called with the calculated size when finishes.
-    */
+    */ // 统计缓存带下
     open func calculateDiskCacheSize(completion handler: @escaping ((_ size: UInt) -> ())) {
-        ioQueue.async {
+        ioQueue.async {// 异步的去遍历文件，获取缓存大小
             let (_, diskCacheSize, _) = self.travelCachedFiles(onlyForCacheSize: true)
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { // 回主线程返回大小。
                 handler(diskCacheSize)
             }
         }
@@ -673,7 +681,7 @@ open class ImageCache {
     - Note: This method does not guarantee there is an image already cached in the path. It just returns the path
       that the image should be.
       You could use `isImageCached(forKey:)` method to check whether the image is cached under that key.
-    */
+    */ // 根据key 处理器，返回 这个图片应该有的缓存地址，不代表有缓存图片
     open func cachePath(forKey key: String, processorIdentifier identifier: String = "") -> String {
         let computedKey = key.computedKey(with: identifier)
         return cachePath(forComputedKey: computedKey)
