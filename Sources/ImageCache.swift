@@ -411,6 +411,7 @@ open class ImageCache {
     Clear memory cache.
     */
     @objc public func clearMemoryCache() {
+        // 清理内存缓存
         memoryCache.removeAllObjects()
     }
     
@@ -419,15 +420,17 @@ open class ImageCache {
     
     - parameter completionHander: Called after the operation completes.
     */
-    open func clearDiskCache(completion handler: (()->())? = nil) {
-        ioQueue.async {
+    open func clearDiskCache(completion handler: (()->())? = nil) { // 清理硬盘缓存
+        ioQueue.async { // io 异步
             do {
+                // 直接删除目录
                 try self.fileManager.removeItem(atPath: self.diskCachePath)
+                // 创建目录
                 try self.fileManager.createDirectory(atPath: self.diskCachePath, withIntermediateDirectories: true, attributes: nil)
             } catch _ { }
             
             if let handler = handler {
-                DispatchQueue.main.async {
+                DispatchQueue.main.async { // 进入主线程
                     handler()
                 }
             }
@@ -437,7 +440,7 @@ open class ImageCache {
     /**
     Clean expired disk cache. This is an async operation.
     */
-    @objc fileprivate func cleanExpiredDiskCache() {
+    @objc fileprivate func cleanExpiredDiskCache() { // 清理过期的磁盘缓存
         cleanExpiredDiskCache(completion: nil)
     }
     
@@ -445,23 +448,27 @@ open class ImageCache {
     Clean expired disk cache. This is an async operation.
     
     - parameter completionHandler: Called after the operation completes.
-    */
+    */// 清理磁盘缓存
     open func cleanExpiredDiskCache(completion handler: (()->())? = nil) {
         
         // Do things in cocurrent io queue
         ioQueue.async {
-            
+            // 异步的  // 返回 要删除的文件，其他文件的累计大小，其他缓存文件属性值
             var (URLsToDelete, diskCacheSize, cachedFiles) = self.travelCachedFiles(onlyForCacheSize: false)
             
+            // 循环遍历的去删除过期文件
             for fileURL in URLsToDelete {
                 do {
                     try self.fileManager.removeItem(at: fileURL)
                 } catch _ { }
             }
-                
+            
+            // 如果当前剩余的缓存文件大于限制容量
             if self.maxDiskCacheSize > 0 && diskCacheSize > self.maxDiskCacheSize {
+                // 设定目标大小为当前最大缓存的一般
                 let targetSize = self.maxDiskCacheSize / 2
-                    
+                
+                // 按照访问时间的先后排序呢 早的在前面
                 // Sort files by last modify date. We want to clean from the oldest files.
                 let sortedFiles = cachedFiles.keysSortedByValue {
                     resourceValue1, resourceValue2 -> Bool in
@@ -476,18 +483,19 @@ open class ImageCache {
                     return true
                 }
                 
+                // 遍历排序后的文件
                 for fileURL in sortedFiles {
-                    
+                    // 每次先删除一个文件
                     do {
                         try self.fileManager.removeItem(at: fileURL)
                     } catch { }
-                        
+                    // 添加到删除数组中
                     URLsToDelete.append(fileURL)
-                    
+                    // 每次递减一次剩余文件大小
                     if let fileSize = cachedFiles[fileURL]?.totalFileAllocatedSize {
                         diskCacheSize -= UInt(fileSize)
                     }
-                    
+                    // 当文件大小满足条件的时候跳出
                     if diskCacheSize < targetSize {
                         break
                     }
@@ -495,59 +503,70 @@ open class ImageCache {
             }
                 
             DispatchQueue.main.async {
-                
+                // 进入主线程，获取刚才删除文件的文件名集合，然后发送通知，传递删除的文件
                 if URLsToDelete.count != 0 {
                     let cleanedHashes = URLsToDelete.map { $0.lastPathComponent }
                     NotificationCenter.default.post(name: .KingfisherDidCleanDiskCache, object: self, userInfo: [KingfisherDiskCacheCleanedHashKey: cleanedHashes])
                 }
                 
+                // 执行handler
                 handler?()
             }
         }
     }
-    
+    // 遍历缓存文件 返回 元组（要删除的文件，硬盘缓存文件大小，）
     fileprivate func travelCachedFiles(onlyForCacheSize: Bool) -> (urlsToDelete: [URL], diskCacheSize: UInt, cachedFiles: [URL: URLResourceValues]) {
-        
+        // 磁盘缓存路径
         let diskCacheURL = URL(fileURLWithPath: diskCachePath)
+        // 要获取的文件属性值 文件是不是目录 文件最近访问时间 文件大小
         let resourceKeys: Set<URLResourceKey> = [.isDirectoryKey, .contentAccessDateKey, .totalFileAllocatedSizeKey]
         let expiredDate: Date? = (maxCachePeriodInSecond < 0) ? nil : Date(timeIntervalSinceNow: -maxCachePeriodInSecond)
-        
+        // 缓存文件 字典
         var cachedFiles = [URL: URLResourceValues]()
+        // 要被删除的文件url数组
         var urlsToDelete = [URL]()
+        // 磁盘缓存大小
         var diskCacheSize: UInt = 0
         
+        // 创建文件遍历器
         if let fileEnumerator = self.fileManager.enumerator(at: diskCacheURL, includingPropertiesForKeys: Array(resourceKeys), options: FileManager.DirectoryEnumerationOptions.skipsHiddenFiles, errorHandler: nil),
-           let urls = fileEnumerator.allObjects as? [URL]
+           let urls = fileEnumerator.allObjects as? [URL] // 获取全部要遍历的文件
         {
             for fileUrl in urls {
                 
                 do {
+                    // 获取文件属性
                     let resourceValues = try fileUrl.resourceValues(forKeys: resourceKeys)
                     // If it is a Directory. Continue to next file URL.
                     if resourceValues.isDirectory == true {
+                        // 是目录 跳过这次循环
                         continue
                     }
                     
+                    // 文件过期了，添加到要删除的数组中，
                     // If this file is expired, add it to URLsToDelete
                     if !onlyForCacheSize,
                        let expiredDate = expiredDate,
                        let lastAccessData = resourceValues.contentAccessDate,
                        (lastAccessData as NSDate).laterDate(expiredDate) == expiredDate
                     {
+                        // 进入下次循环
                         urlsToDelete.append(fileUrl)
                         continue
                     }
 
+                    // 累加文件大小
                     if let fileSize = resourceValues.totalFileAllocatedSize {
                         diskCacheSize += UInt(fileSize)
                         if !onlyForCacheSize {
+                            // 不仅仅计算大小的话，把获取到的文件属性保存起来
                             cachedFiles[fileUrl] = resourceValues
                         }
                     }
                 } catch _ { }
             }
         }
-        
+        // 返回 要删除的文件，其他文件的累计大小，其他缓存文件属性值
         return (urlsToDelete, diskCacheSize, cachedFiles)
     }
     
